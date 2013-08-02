@@ -69,3 +69,7 @@ I didn't realize `repo` wasn't supported on Windows.
 And thus this little effort.
 
 Good luck.
+
+# Limitations #
+... uhh ... probably everything outside of being able to `repo sync` ONCE after `repo init` for stoker.git.  And I wouldn't trust the `-j` option.  And I wouldn't suggest using this on complicated manifest files.
+

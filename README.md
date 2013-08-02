@@ -16,8 +16,37 @@ The basic strategy is to replace all os.symlink calls with shutil.copyfile calls
 How to use:
 1) Make sure you have python 2.7 installed on Windows and your path is updated so that python.exe is found
 2) Make sure git is in your path (automatic if you installed the new github windows client)
+3) Save the patch locally to your hard-drive
+Go to https://raw.github.com/kaytat/repo-for-windows-hack/master/v1.12.2.patch
+Save this file to c:\v1.12.2.patch
 3) Clone the repo source
 c:\>mkdir repowin
 c:\>cd repowin
-c:\>git clone https://gerrit.googlesource.com/git-repo
-4)
+c:\repowin>git clone https://gerrit.googlesource.com/git-repo
+5) Apply the patch to v1.12.2
+c:\repowin>cd git-repo
+c:\repowin\git-repo>git checkout -b mybranch v1.12.2
+c:\repowin\git-repo>git apply c:\v1.12.2.patch
+
+At this point, the local copy of repo has been patched and you should be able to pull down code.
+
+In the example of the Stoker code:
+c:\>mkdir stoker
+c:\>cd stoker
+c:\stoker>python c:\repowin\git-repo\repo init -u https://github.com/kaytat/stoker.git -m default.xml
+c:\stoker>python c:\repowin\git-repo\repo sync
+
+Why bother?
+All the Stoker development has been on Windows.
+
+But I wanted to take advantage of github.
+
+And to take advantage of github, I figured I should follow the convention where each git repo contains a separate project.
+
+But since there are multiple git repos and git submodules really confused me, I figured repo would be the best way around this.
+
+I didn't realize repo wasn't supported on Windows.
+
+And thus this little effort.
+
+Good luck.

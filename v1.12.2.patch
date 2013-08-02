@@ -1,0 +1,215 @@
+diff --git a/manifest_xml.py b/manifest_xml.py
+index 07f0c66..0c90582 100644
+--- a/manifest_xml.py
++++ b/manifest_xml.py
+@@ -17,6 +17,7 @@ from __future__ import print_function
+ import itertools
+ import os
+ import re
++import shutil
+ import sys
+ import urlparse
+ import xml.dom.minidom
+@@ -126,9 +127,21 @@ class XmlManifest(object):
+     self.Override(name)
+ 
+     try:
+-      if os.path.lexists(self.manifestFile):
++      # -- Original --
++      #if os.path.lexists(self.manifestFile):
++      #  os.remove(self.manifestFile)
++      #os.symlink('manifests/%s' % name, self.manifestFile)
++      # -- Begin hack --
++      # The original symlink doesn't doesn't need to be
++      # in the .repo dir.  However, for copyfile to work,
++      # we need to be in .repo so there is a quick chdir
++      # and an pop back out.
++      os.chdir(".repo")
++      if os.path.exists(self.manifestFile):
+         os.remove(self.manifestFile)
+-      os.symlink('manifests/%s' % name, self.manifestFile)
++      shutil.copyfile('manifests/%s' % name, self.manifestFile)
++      os.chdir("..")
++      # -- End --
+     except OSError as e:
+       raise ManifestParseError('cannot link manifest %s: %s' % (name, str(e)))
+ 
+diff --git a/project.py b/project.py
+index 22e4a5d..6eeee54 100644
+--- a/project.py
++++ b/project.py
+@@ -46,6 +46,18 @@ def _lwrite(path, content):
+     fd.close()
+ 
+   try:
++    # -- Original --
++    # -- Begin hack --
++    # In Windows, the rename function throws an error
++    # if the file already exists.  The behavior is different
++    # in linux.  To prevent the error, try to delete the
++    # file first.
++    try:
++      os.remove(path)
++    except OSError, e:
++      if e.errno != errno.ENOENT:
++        raise
++    # -- End --
+     os.rename(lock, path)
+   except OSError:
+     os.remove(lock)
+@@ -1912,7 +1924,17 @@ class Project(object):
+           _error("%s: Not replacing %s hook", self.relpath, name)
+           continue
+       try:
+-        os.symlink(os.path.relpath(stock_hook, os.path.dirname(dst)), dst)
++        # -- Original --
++        #os.symlink(os.path.relpath(stock_hook, os.path.dirname(dst)), dst)\
++        # -- Begin hack --
++        # Replace the symlink calls with hard file copies
++        try:
++            os.remove(dst)
++        except OSError, e:
++            if e.errno != errno.ENOENT:
++                raise
++        shutil.copyfile(stock_hook, dst)
++        # -- End --
+       except OSError as e:
+         if e.errno == errno.EPERM:
+           raise GitError('filesystem must support symlinks')
+@@ -1973,7 +1995,31 @@ class Project(object):
+           src = os.path.join(self.gitdir, name)
+           dst = os.path.join(dotgit, name)
+           if os.path.islink(dst) or not os.path.exists(dst):
+-            os.symlink(os.path.relpath(src, os.path.dirname(dst)), dst)
++            # -- Original --
++            #os.symlink(os.path.relpath(src, os.path.dirname(dst)), dst)
++            # -- Begin hack --
++            # The symlink doesn't care if the target is file or
++            # directory.  Unfortunately in order to replace symlinks with
++            # hard copies, the calls are different between copying a single
++            # file and copying an entire directory tree.
++            if os.path.isdir(src):
++              try:
++                shutil.rmtree(dst, ignore_errors = True)
++              except OSError, e:
++                if e.errno != errno.ENOENT:
++                  raise
++              shutil.copytree(src, dst)
++            else:
++              if os.path.exists(src):
++                try:
++                 os.remove(dst)
++                except OSError, e:
++                  if e.errno != errno.ENOENT:
++                    raise
++                shutil.copyfile(src, dst)
++              else:
++                open(src, 'a').close()
++            # -- End --
+           else:
+             raise GitError('cannot overwrite a local work tree')
+         except OSError as e:
+diff --git a/repo b/repo
+index 6b374f7..1a0c82f 100755
+--- a/repo
++++ b/repo
+@@ -114,6 +114,7 @@ import optparse
+ import os
+ import re
+ import stat
++import string
+ import subprocess
+ import sys
+ try:
+@@ -719,7 +720,15 @@ def main(orig_args):
+     repo_main = my_main
+ 
+   ver_str = '.'.join(map(str, VERSION))
+-  me = [repo_main,
++  # -- Original --
++  #me = [repo_main,
++  # -- Begin hack --
++  # Just in case Windows doesn't understand the hash bang
++  # at the beginning of the scripts, explicitly call python
++  # when executing the scripts
++  # -- End --
++  me = ['python',
++        repo_main,
+         '--repo-dir=%s' % rel_repo_dir,
+         '--wrapper-version=%s' % ver_str,
+         '--wrapper-path=%s' % wrapper_path,
+@@ -727,7 +736,13 @@ def main(orig_args):
+   me.extend(orig_args)
+   me.extend(extra_args)
+   try:
+-    os.execv(repo_main, me)
++    # -- Original --
++    #os.execv(repo_main, me)
++    # -- Begin hack --
++    # Use the *p variante of exec so that the PATH variable is
++    # searched for the executable
++    os.execvp('python', me)
++    # -- End --
+   except OSError as e:
+     print("fatal: unable to start %s" % repo_main, file=sys.stderr)
+     print("fatal: %s" % e, file=sys.stderr)
+diff --git a/subcmds/forall.py b/subcmds/forall.py
+index 4c1c9ff..e25aa8a 100644
+--- a/subcmds/forall.py
++++ b/subcmds/forall.py
+@@ -14,7 +14,15 @@
+ # limitations under the License.
+ 
+ from __future__ import print_function
+-import fcntl
++# -- Original
++#import fcntl
++# -- Begin hack --
++# I have no idea what fcntl is or what it does or what its purpose
++# is.  All I know that is Windows doesn't have this.  So I've commented
++# out all references to fcntl.
++#
++# This is probably bad.
++# -- End --
+ import re
+ import os
+ import select
+@@ -225,10 +233,12 @@ without iterating through the remaining projects.
+         s_in = [sfd(p.stdout, sys.stdout),
+                 sfd(p.stderr, sys.stderr)]
+ 
+-        for s in s_in:
+-          flags = fcntl.fcntl(s.fd, fcntl.F_GETFL)
+-          fcntl.fcntl(s.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+-
++        # -- Original --
++        #for s in s_in:
++        #  flags = fcntl.fcntl(s.fd, fcntl.F_GETFL)
++        #  fcntl.fcntl(s.fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
++        # -- Begin hack --
++        # -- End --
+         while s_in:
+           in_ready, _out_ready, _err_ready = select.select(s_in, [], [])
+           for s in in_ready:
+diff --git a/subcmds/init.py b/subcmds/init.py
+index 1131260..8292407 100644
+--- a/subcmds/init.py
++++ b/subcmds/init.py
+@@ -276,6 +276,17 @@ to update the working directory files.
+     if self._HasColorSet(gc):
+       return
+ 
++    # -- Original --
++    # -- Begin hack --
++    # Wow, Windows cmd.exe really doesn't like the control
++    # characters to  manipulate colors.  Everytime the test is
++    # run, cmd.exe ends up in a really weird state.
++    #
++    # Avoid colors.
++    gc.SetString('color.ui', 'false')
++    return
++    # -- End hack --
++
+     class _Test(Coloring):
+       def __init__(self):
+         Coloring.__init__(self, gc, 'test color display')

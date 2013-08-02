@@ -1,7 +1,7 @@
 repo-for-windows-hack
 =====================
 
-Hack for the repo script in Android so that it can somewhat be used on Windows
+Hack for the `repo` script in Android so that it can somewhat be used on Windows
 
 # Apologies #
 Sometimes 'repo' means a git repository.  Other times it means the `repo` script.
